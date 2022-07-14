@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
     private val service = PostsService.create()
     private val serviceUser = PostsUserService.create()
 
+    // codigo en s3
     companion object {
         const val PHOTO_KEY = "my-photo.jpg"
     }
