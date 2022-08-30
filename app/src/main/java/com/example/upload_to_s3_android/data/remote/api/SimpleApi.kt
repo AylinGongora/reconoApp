@@ -34,6 +34,11 @@ interface SimpleApi {
         @Body requestBody: RequestBody
     ): Response<ResponseBody>
 
+    @POST("validar")
+    suspend fun pushValidar(
+        @Body requestBody: RequestBody
+    ): Response<ResponseBody>
+
     @FormUrlEncoded
     @POST("posts")
     suspend fun pushPost2(

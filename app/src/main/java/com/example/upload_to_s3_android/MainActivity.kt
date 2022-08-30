@@ -86,6 +86,12 @@ sealed class LoginState {
     object Logerror: LoginState()
 }
 
+sealed class ValidateState {
+    object Success: ValidateState()
+    object None: ValidateState()
+    object Error: ValidateState()
+}
+
 sealed class LogoutState {
     object LogError: LoginState()
     object Login: LoginState()
@@ -95,8 +101,10 @@ class MainActivity : ComponentActivity() {
 
     private val service = PostsService.create()
     private val serviceUser = PostsUserService.create()
+    private var mensajeVal = ""
+    private var nombreUsuario = ""
 
-    // codigo en s3
+
     companion object {
         const val PHOTO_KEY = "my-photo.jpg"
     }
@@ -104,6 +112,7 @@ class MainActivity : ComponentActivity() {
     private var imageState = mutableStateOf<ImageState>(ImageState.Initial)
     private var loginState = mutableStateOf<LoginState>(LoginState.Logout)
     private var logoutState = mutableStateOf<LoginState>(LogoutState.Login)
+    private var validateState = mutableStateOf<ValidateState>(ValidateState.None)
     private var logError = false
 
     private val getImageLauncher = registerForActivityResult(GetContent()) { uri ->
@@ -124,6 +133,10 @@ class MainActivity : ComponentActivity() {
                     .background(Color.White)
 
             ) {
+
+                if(!"".equals(nombreUsuario)){
+                    Text(text = ("!Hola "+ nombreUsuario + "!"))
+                }
                 Image(painter = painterResource(id = R.drawable.logo_upc_red), contentDescription = null)
                 Text(text = "")
                 when (val state = loginState.value) {
@@ -169,6 +182,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     is LoginState.Login -> {
+
                         when (val state = imageState.value) {
                             // Show Open Gallery Button
                             is ImageState.Initial -> {
@@ -215,9 +229,25 @@ class MainActivity : ComponentActivity() {
                                 Text(text = "Fecha Venc.: "+posts.value.fExpira)
                                 Text(text = "% Fecha Venc.: "+posts.value.fVal)
 
-                                /*Button(onClick = ::downloadPhoto) {
-                                    Text(text = "Descargar tarjeta")
-                                }*/
+                                Text(text = "")
+
+                                when (val state = validateState.value) {
+                                    is ValidateState.Success -> {
+                                        Text(text = mensajeVal, color = Color.Green)
+                                    }
+                                    is ValidateState.Error -> {
+                                        Text(text = mensajeVal, color = Rojo)
+                                    }
+                                }
+
+                                if("".equals(posts.value.nTarjeta)){
+                                    Text(text = "")
+                                }else{
+                                    Button(onClick = {validaTarjeta(posts.value.nTarjeta,posts.value.fExpira)}, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
+                                        Text(text = "Validar Datos Tarjeta")
+                                    }
+                                }
+
                                 Text(text = "")
                                 Button(onClick = { getImageLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
                                     Text(text = "Seleccionar Nueva Tarjeta")
@@ -272,6 +302,8 @@ class MainActivity : ComponentActivity() {
 
     private fun uploadPhoto(imageUri: Uri) {
         val stream = contentResolver.openInputStream(imageUri)!!
+        mensajeVal = ""
+        validateState.value = ValidateState.None
 
         Amplify.Storage.uploadInputStream(
             PHOTO_KEY,
@@ -325,6 +357,7 @@ class MainActivity : ComponentActivity() {
 
                     if(jsonObject.getInt("input") ==1){
                         Log.d("success :", "1")
+                        nombreUsuario = jsonObject.getString("nombre")
                         loginState.value = LoginState.Login
                         logoutState.value = LogoutState.Login
                     }else{
@@ -341,7 +374,76 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun validaTarjeta(pan: String,fechaVen: String ) {
+
+        Log.e("pan", pan)
+        Log.e("fechaVen", fechaVen)
+
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://f7ytj1daw8.execute-api.us-east-1.amazonaws.com/dev/tarjeta/")
+            .build()
+
+        val service = retrofit.create(SimpleApi::class.java)
+
+        val pan2 = pan.replace(' ','-');
+
+        // Create JSON using JSONObject
+        val jsonObject = JSONObject()
+        val tarjeta = JSONObject("""{"pan":""""+pan2+"""", "fechaVenc":""""+fechaVen+""""}""")
+        jsonObject.put("tarjeta", tarjeta)
+
+        // Convert JSONObject to String
+        val jsonObjectString = jsonObject.toString()
+
+        // Create RequestBody ( We're not using any converter, like GsonConverter, MoshiConverter e.t.c, that's why we use RequestBody )
+        val requestBody = jsonObjectString.toRequestBody("application/json".toMediaTypeOrNull())
+
+        CoroutineScope(Dispatchers.IO).launch {
+            // Do the POST request and get response
+            val response = service.pushValidar(requestBody)
+
+            withContext(Dispatchers.Main) {
+                if (response.isSuccessful) {
+
+                    // Convert raw JSON to pretty JSON using GSON library
+                    val gson = GsonBuilder().setPrettyPrinting().create()
+                    val prettyJson = gson.toJson(
+                        JsonParser.parseString(
+                            response.body()?.string() // About this thread blocking annotation : https://github.com/square/retrofit/issues/3255
+                        )
+                    )
+
+                    Log.d("Pretty Printed JSON :", prettyJson)
+
+                    val jsonObject = JSONObject(prettyJson)
+                    Log.d(">>>>", jsonObject.getString("code").toString())
+
+                    if(jsonObject.getString("code").equals("success")){
+                        Log.d("success :", jsonObject.getString("message"))
+                        mensajeVal = jsonObject.getString("message")
+                        validateState.value = ValidateState.Success
+
+                    }else{
+                        Log.d("error :", jsonObject.getString("message"))
+                        mensajeVal = jsonObject.getString("message")
+                        validateState.value = ValidateState.Error
+                    }
+
+                } else {
+
+                    Log.e("RETROFIT_ERROR", response.code().toString())
+
+
+                }
+            }
+        }
+    }
+
     private fun logout() {
+
+        mensajeVal = ""
+        nombreUsuario = ""
+        validateState.value = ValidateState.None
         loginState.value = LoginState.Logout
     }
 
