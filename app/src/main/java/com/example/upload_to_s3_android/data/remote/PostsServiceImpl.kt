@@ -5,6 +5,7 @@ import io.ktor.client.*
 import io.ktor.client.features.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import org.json.JSONArray
 import org.json.JSONObject
 
 class PostsServiceImpl(
@@ -34,7 +35,7 @@ class PostsServiceImpl(
 
     override suspend fun createPost(): PostResponse? {
 
-        var resp = PostResponse("", "", "", "")
+        var resp = PostResponse("", "", "", "","","", JSONArray() ,"")
         try {
              val res = client.post<String> {
                 url(HttpRoutes.POSTS)
@@ -44,7 +45,14 @@ class PostsServiceImpl(
 
             var respn = JSONObject(res)
             var obj = respn.getJSONObject("Tarjeta")
-            resp = PostResponse(obj.getString("nTarjeta"), obj.getString("nVal"), obj.getString("fExpira"), obj.getString("fVal"))
+            var stringsValues = obj.getJSONArray("stringsValues")
+            var valoresNombre = ""
+            for (i in 0 until stringsValues.length()) {
+                val nombre = stringsValues.getString(i)
+                valoresNombre += nombre+","
+            }
+            println("valoresNombre: ${valoresNombre}")
+            resp = PostResponse(obj.getString("nTarjeta"), obj.getString("nVal"), obj.getString("fExpira"), obj.getString("fVal"), obj.getString("nCvc"),obj.getString("pCvc"),stringsValues, valoresNombre)
 
         } catch(e: RedirectResponseException) {
             // 3xx - responses

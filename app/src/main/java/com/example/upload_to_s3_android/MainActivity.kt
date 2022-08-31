@@ -9,10 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts.GetContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.Text
@@ -36,10 +32,11 @@ import com.example.upload_to_s3_android.ui.theme.Rojo
 import java.io.File
 
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.MaterialTheme.typography
 import androidx.compose.material.icons.Icons
@@ -55,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import com.example.upload_to_s3_android.data.remote.PostsUserService
 import com.example.upload_to_s3_android.data.remote.dto.PostUserResponse
 import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import com.example.upload_to_s3_android.data.remote.api.SimpleApi
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
@@ -64,6 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import retrofit2.Retrofit
 import java.io.BufferedReader
@@ -78,6 +78,12 @@ sealed class ImageState {
     class ImageSelected(val imageUri: Uri): ImageState()
     object ImageUploaded: ImageState()
     class ImageDownloaded(val downloadedImageFile: File): ImageState()
+}
+
+sealed class ImageStateCvc {
+    object Initial: ImageStateCvc()
+    class ImageSelected(val imageUri: Uri): ImageStateCvc()
+    object ImageUploaded: ImageStateCvc()
 }
 
 sealed class LoginState {
@@ -107,16 +113,23 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val PHOTO_KEY = "my-photo.jpg"
+        const val PHOTO_KEY_CVC = "cvc.jpg"
     }
 
     private var imageState = mutableStateOf<ImageState>(ImageState.Initial)
+    private var imageStateCvc = mutableStateOf<ImageStateCvc>(ImageStateCvc.Initial)
     private var loginState = mutableStateOf<LoginState>(LoginState.Logout)
     private var logoutState = mutableStateOf<LoginState>(LogoutState.Login)
     private var validateState = mutableStateOf<ValidateState>(ValidateState.None)
     private var logError = false
 
     private val getImageLauncher = registerForActivityResult(GetContent()) { uri ->
-        uri?.let { imageState.value = ImageState.ImageSelected(it) }
+        uri?.let { imageState.value = ImageState.ImageSelected(it)
+            imageStateCvc.value = ImageStateCvc.Initial}
+    }
+
+    private val getImageLauncherCvc = registerForActivityResult(GetContent()) { uri ->
+        uri?.let { imageStateCvc.value = ImageStateCvc.ImageSelected(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,11 +138,14 @@ class MainActivity : ComponentActivity() {
         configureAmplify()
 
         setContent {
+            val scrollState = rememberScrollState()
+            LaunchedEffect(Unit) { scrollState.animateScrollTo(10000) }
             Column(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxSize()
+                    //.verticalScroll(scrollState)
                     .background(Color.White)
 
             ) {
@@ -193,28 +209,59 @@ class MainActivity : ComponentActivity() {
 
                             // Show Upload Button
                             is ImageState.ImageSelected -> {
-
-                                Button(onClick = { uploadPhoto(state.imageUri) }, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
-                                    Text(text = "Validar tarjeta"
-                                    )
-                                }
                                 Text(text = "")
 
                                 Image(
                                     painter = rememberImagePainter(
                                         data  = state.imageUri  // or ht
                                     ),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxWidth()
+                                    /*contentDescription = null,
+                                    modifier = Modifier.fillMaxWidth()*/
+                                    contentDescription = "Localized description",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .clip(shape = RoundedCornerShape(16.dp))
+                                        .size(250.dp,150.dp)
                                 )
 
+                                when (val stateCvc = imageStateCvc.value) {
+
+                                    is ImageStateCvc.Initial -> {
+                                        Button(onClick = { getImageLauncherCvc.launch("image/*") }, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
+                                            Text(text = "Seleccionar CVC")
+                                        }
+                                    }
+
+                                    is ImageStateCvc.ImageSelected -> {
+                                        Text(text = "")
+
+                                        Image(
+                                            painter = rememberImagePainter(
+                                                data  = stateCvc.imageUri  // or ht
+                                            ),
+                                            /*contentDescription = null,
+                                            modifier = Modifier.fillMaxWidth()*/
+                                            contentDescription = "Localized description",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .clip(shape = RoundedCornerShape(16.dp))
+                                                .size(250.dp,150.dp)
+                                        )
+
+                                        Button(onClick = { uploadPhoto(state.imageUri, stateCvc.imageUri) }, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
+                                            Text(text = "Validar tarjeta"
+                                            )
+                                        }
+                                    }
+
+                                }
 
                             }
 
                             // Show Download Button
                             is ImageState.ImageUploaded -> {
 
-                                val postR = PostResponse("","","1","1")
+                                val postR = PostResponse("","","1","1","","", JSONArray(), "")
                                 val posts = produceState(
                                     initialValue = postR,
                                     producer = {
@@ -228,6 +275,8 @@ class MainActivity : ComponentActivity() {
                                 Text(text = "% Nro. Tarjeta: "+posts.value.nVal)
                                 Text(text = "Fecha Venc.: "+posts.value.fExpira)
                                 Text(text = "% Fecha Venc.: "+posts.value.fVal)
+                                Text(text = "CVC: "+posts.value.nCvc)
+                                Text(text = "% CVC: "+posts.value.pCvc)
 
                                 Text(text = "")
 
@@ -243,7 +292,7 @@ class MainActivity : ComponentActivity() {
                                 if("".equals(posts.value.nTarjeta)){
                                     Text(text = "")
                                 }else{
-                                    Button(onClick = {validaTarjeta(posts.value.nTarjeta,posts.value.fExpira)}, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
+                                    Button(onClick = {validaTarjeta(posts.value.nTarjeta,posts.value.fExpira, posts.value.nCvc, posts.value.nVal, posts.value.fVal, posts.value.pCvc, posts.value.stringsValues)}, colors = ButtonDefaults.buttonColors(backgroundColor = Rojo, contentColor = Color.White)) {
                                         Text(text = "Validar Datos Tarjeta")
                                     }
                                 }
@@ -300,13 +349,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun uploadPhoto(imageUri: Uri) {
+    private fun uploadPhoto(imageUri: Uri,imageUriCvc: Uri) {
         val stream = contentResolver.openInputStream(imageUri)!!
         mensajeVal = ""
         validateState.value = ValidateState.None
 
         Amplify.Storage.uploadInputStream(
             PHOTO_KEY,
+            stream,
+            //{ imageState.value = ImageState.ImageUploaded },
+            { uploadPhotoCvc(imageUriCvc) },
+            { error -> Log.e("kilo", "Failed upload", error) }
+        )
+    }
+
+    private fun uploadPhotoCvc(imageUri: Uri) {
+        val stream = contentResolver.openInputStream(imageUri)!!
+        mensajeVal = ""
+        validateState.value = ValidateState.None
+
+        Amplify.Storage.uploadInputStream(
+            PHOTO_KEY_CVC,
             stream,
             { imageState.value = ImageState.ImageUploaded },
             { error -> Log.e("kilo", "Failed upload", error) }
@@ -374,10 +437,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun validaTarjeta(pan: String,fechaVen: String ) {
+    private fun validaTarjeta(pan: String,fechaVen: String, cvc: String, panPorc: String, fecPorc: String, cvcPorc: String, nombres: JSONArray) {
 
         Log.e("pan", pan)
         Log.e("fechaVen", fechaVen)
+        mensajeVal = ""
+        validateState.value = ValidateState.None
+
+        var panPorcSp = panPorc.split(".")[0]
+        var fecPorcSp = fecPorc.split(".")[0]
+        var cvcPorcSp = cvcPorc.split(".")[0]
+
 
         val retrofit = Retrofit.Builder()
             .baseUrl("https://f7ytj1daw8.execute-api.us-east-1.amazonaws.com/dev/tarjeta/")
@@ -389,8 +459,10 @@ class MainActivity : ComponentActivity() {
 
         // Create JSON using JSONObject
         val jsonObject = JSONObject()
-        val tarjeta = JSONObject("""{"pan":""""+pan2+"""", "fechaVenc":""""+fechaVen+""""}""")
+        val tarjeta =
+            JSONObject("""{"pan":""""+pan2+"""", "fechaVenc":""""+fechaVen+"""", "cvc":""""+cvc+"""", "panPorc":""""+panPorcSp+"""", "fecPorc":""""+fecPorcSp+"""", "cvcPorc":""""+cvcPorcSp+""""}""")
         jsonObject.put("tarjeta", tarjeta)
+        jsonObject.put("nombres", nombres)
 
         // Convert JSONObject to String
         val jsonObjectString = jsonObject.toString()
