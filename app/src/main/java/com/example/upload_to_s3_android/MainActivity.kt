@@ -710,7 +710,7 @@ class MainActivity : ComponentActivity() {
                 fontSize = 9.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(2.dp),
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = colorText
             )
