@@ -605,7 +605,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun verReporte(){
-        for( rep in listaReporte){
+        for( rep in listaReporte){ 
             Log.e("rep.id",rep.id.toString())
             Log.e("rep.pan",rep.pan)
             Log.e("rep.status.code",rep.status.code)
