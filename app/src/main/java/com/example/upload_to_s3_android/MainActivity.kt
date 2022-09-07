@@ -588,6 +588,7 @@ class MainActivity : ComponentActivity() {
         validateState.value = ValidateState.None
         loginState.value = LoginState.Logout
         listaReporte = mutableListOf()
+        imageState.value = ImageState.Initial
     }
 
 
@@ -615,6 +616,7 @@ class MainActivity : ComponentActivity() {
 
     private fun cerrarReporte(){
         reporteState.value = ReporteState.CerrarReporte
+        imageState.value = ImageState.Initial
     }
 
     @Composable
